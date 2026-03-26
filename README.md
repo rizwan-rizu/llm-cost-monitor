@@ -4,8 +4,6 @@
 
 A transparent proxy that sits between your app and any LLM API, logs every request's token usage and cost, and serves a real-time dashboard. You don't touch your application code. Just change the base URL and you're done.
 
-![Dashboard Screenshot](docs/dashboard.png)
-
 ---
 
 ## Why?
@@ -162,7 +160,7 @@ LLM_PROXY_ANTHROPIC_TARGET=https://your-custom-anthropic-endpoint.com
 
 ### Docker
 ```bash
-docker run -p 8877:8877 -v ~/.llm-cost-monitor:/data ghcr.io/YOUR_USERNAME/llm-cost-monitor
+docker run -p 8877:8877 -v ~/.llm-cost-monitor:/data ghcr.io/rizwan-rizu/llm-cost-monitor
 ```
 
 ## How It Works

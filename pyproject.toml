@@ -31,9 +31,9 @@ dependencies = [
 llm-cost-monitor = "llm_cost_monitor.__main__:main"
 
 [project.urls]
-Homepage = "https://github.com/YOUR_USERNAME/llm-cost-monitor"
-Repository = "https://github.com/YOUR_USERNAME/llm-cost-monitor"
-Issues = "https://github.com/YOUR_USERNAME/llm-cost-monitor/issues"
+Homepage = "https://github.com/rizwan-rizu/llm-cost-monitor"
+Repository = "https://github.com/rizwan-rizu/llm-cost-monitor"
+Issues = "https://github.com/rizwan-rizu/llm-cost-monitor/issues"
 
 [tool.setuptools.packages.find]
 include = ["llm_cost_monitor*"]
