@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM Cost Monitor</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+  :root {
+    --bg-primary: #0a0a0f;
+    --bg-card: #12121a;
+    --bg-card-hover: #1a1a26;
+    --border: #1e1e2e;
+    --text-primary: #e2e2e8;
+    --text-secondary: #6e6e82;
+    --text-muted: #44445a;
+    --accent: #22c55e;
+    --accent-dim: rgba(34, 197, 94, 0.12);
+    --red: #ef4444;
+    --red-dim: rgba(239, 68, 68, 0.12);
+    --amber: #f59e0b;
+    --amber-dim: rgba(245, 158, 11, 0.12);
+    --blue: #3b82f6;
+    --blue-dim: rgba(59, 130, 246, 0.12);
+    --purple: #a855f7;
+    --purple-dim: rgba(168, 85, 247, 0.12);
+    --cyan: #06b6d4;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  .noise {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    opacity: 0.03; pointer-events: none; z-index: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  }
+
+  .container {
+    max-width: 1400px; margin: 0 auto; padding: 24px 32px;
+    position: relative; z-index: 1;
+  }
+
+  /* Header */
+  .header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 32px; padding-bottom: 24px; border-bottom: 1px solid var(--border);
+  }
+  .header-left { display: flex; align-items: center; gap: 16px; }
+  .logo {
+    width: 40px; height: 40px; border-radius: 10px;
+    background: linear-gradient(135deg, var(--accent), #059669);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: 700; color: #000;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .header h1 {
+    font-size: 20px; font-weight: 600; letter-spacing: -0.02em;
+  }
+  .header h1 span { color: var(--text-muted); font-weight: 400; }
+  .live-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34,197,94,0.4); }
+    50% { opacity: 0.7; box-shadow: 0 0 0 6px rgba(34,197,94,0); }
+  }
+  .time-filter {
+    display: flex; gap: 4px; background: var(--bg-card); border-radius: 8px;
+    padding: 4px; border: 1px solid var(--border);
+  }
+  .time-btn {
+    padding: 6px 14px; border: none; background: transparent; color: var(--text-secondary);
+    font-size: 13px; font-weight: 500; border-radius: 6px; cursor: pointer;
+    font-family: inherit; transition: all 0.15s;
+  }
+  .time-btn.active { background: var(--accent-dim); color: var(--accent); }
+  .time-btn:hover:not(.active) { color: var(--text-primary); }
+
+  /* Stat Cards */
+  .stats-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+    margin-bottom: 24px;
+  }
+  .stat-card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px 24px;
+    transition: border-color 0.2s;
+  }
+  .stat-card:hover { border-color: #2a2a3e; }
+  .stat-label {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--text-secondary); margin-bottom: 8px; font-weight: 500;
+  }
+  .stat-value {
+    font-family: 'JetBrains Mono', monospace; font-size: 28px;
+    font-weight: 700; letter-spacing: -0.02em; line-height: 1;
+  }
+  .stat-value.cost { color: var(--accent); }
+  .stat-value.cost.high { color: var(--red); }
+  .stat-sub {
+    font-size: 12px; color: var(--text-muted); margin-top: 6px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .stat-icon {
+    width: 32px; height: 32px; border-radius: 8px; display: flex;
+    align-items: center; justify-content: center; font-size: 15px;
+    margin-bottom: 12px;
+  }
+  .stat-icon.green { background: var(--accent-dim); }
+  .stat-icon.red { background: var(--red-dim); }
+  .stat-icon.amber { background: var(--amber-dim); }
+  .stat-icon.blue { background: var(--blue-dim); }
+
+  /* Charts Grid */
+  .charts-grid {
+    display: grid; grid-template-columns: 2fr 1fr; gap: 16px;
+    margin-bottom: 24px;
+  }
+  .card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px 24px; overflow: hidden;
+  }
+  .card-title {
+    font-size: 13px; font-weight: 600; color: var(--text-secondary);
+    text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 16px;
+  }
+
+  /* Request Log Table */
+  .table-wrap { overflow-x: auto; }
+  table {
+    width: 100%; border-collapse: collapse;
+    font-size: 13px; font-family: 'JetBrains Mono', monospace;
+  }
+  th {
+    text-align: left; padding: 10px 12px; color: var(--text-muted);
+    font-weight: 500; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.06em; border-bottom: 1px solid var(--border);
+  }
+  td {
+    padding: 10px 12px; border-bottom: 1px solid var(--border);
+    color: var(--text-secondary); white-space: nowrap;
+  }
+  tr:hover td { color: var(--text-primary); background: var(--bg-card-hover); }
+  .provider-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+  }
+  .provider-openai { background: var(--accent-dim); color: var(--accent); }
+  .provider-anthropic { background: var(--amber-dim); color: var(--amber); }
+  .provider-google { background: var(--blue-dim); color: var(--blue); }
+  .provider-groq { background: var(--purple-dim); color: var(--purple); }
+  .provider-deepseek { background: var(--blue-dim); color: var(--cyan); }
+  .cost-cell { color: var(--accent); font-weight: 600; }
+  .cost-cell.expensive { color: var(--red); }
+
+  /* Empty state */
+  .empty-state {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 300px; color: var(--text-muted); text-align: center; gap: 12px;
+  }
+  .empty-state code {
+    background: var(--bg-card-hover); padding: 12px 20px; border-radius: 8px;
+    font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--accent);
+    border: 1px solid var(--border);
+  }
+
+  /* Model breakdown bars */
+  .model-bars { display: flex; flex-direction: column; gap: 12px; }
+  .model-row { display: flex; align-items: center; gap: 12px; }
+  .model-name {
+    width: 200px; font-size: 12px; font-family: 'JetBrains Mono', monospace;
+    color: var(--text-secondary); text-align: right; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0;
+  }
+  .model-bar-wrap { flex: 1; height: 24px; background: var(--bg-primary); border-radius: 4px; overflow: hidden; }
+  .model-bar {
+    height: 100%; border-radius: 4px; transition: width 0.6s ease;
+    min-width: 2px; display: flex; align-items: center; padding-left: 8px;
+    font-size: 11px; font-family: 'JetBrains Mono', monospace; font-weight: 600;
+  }
+  .model-cost {
+    width: 80px; text-align: right; font-size: 12px;
+    font-family: 'JetBrains Mono', monospace; color: var(--accent); flex-shrink: 0;
+  }
+
+  @media (max-width: 1000px) {
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .charts-grid { grid-template-columns: 1fr; }
+    .container { padding: 16px; }
+  }
+  @media (max-width: 600px) {
+    .stats-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="noise"></div>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <div class="logo">$</div>
+      <h1>LLM Cost Monitor <span>v0.1</span></h1>
+      <div class="live-dot" title="Live"></div>
+    </div>
+    <div class="time-filter">
+      <button class="time-btn" data-hours="1">1h</button>
+      <button class="time-btn" data-hours="6">6h</button>
+      <button class="time-btn active" data-hours="24">24h</button>
+      <button class="time-btn" data-hours="168">7d</button>
+      <button class="time-btn" data-hours="720">30d</button>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-icon green">$</div>
+      <div class="stat-label">Total Spend</div>
+      <div class="stat-value cost" id="total-cost">$0.0000</div>
+      <div class="stat-sub" id="avg-cost">avg $0.0000 / request</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon blue">#</div>
+      <div class="stat-label">Requests</div>
+      <div class="stat-value" id="total-requests">0</div>
+      <div class="stat-sub" id="req-rate">0 / hour</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon amber">T</div>
+      <div class="stat-label">Tokens</div>
+      <div class="stat-value" id="total-tokens">0</div>
+      <div class="stat-sub" id="token-split">in: 0 / out: 0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon red">~</div>
+      <div class="stat-label">Avg Latency</div>
+      <div class="stat-value" id="avg-latency">0ms</div>
+      <div class="stat-sub" id="latency-note">per request</div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="charts-grid">
+    <div class="card">
+      <div class="card-title">Spend Over Time</div>
+      <canvas id="cost-chart" height="260"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-title">Cost by Model</div>
+      <div class="model-bars" id="model-bars"></div>
+    </div>
+  </div>
+
+  <!-- Request Log -->
+  <div class="card">
+    <div class="card-title">Recent Requests</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Provider</th>
+            <th>Model</th>
+            <th>Input</th>
+            <th>Output</th>
+            <th>Cost</th>
+            <th>Latency</th>
+            <th>Tag</th>
+          </tr>
+        </thead>
+        <tbody id="request-log"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const API = '';
+  let currentHours = 24;
+  let costChart = null;
+
+  // Chart.js setup
+  Chart.defaults.color = '#6e6e82';
+  Chart.defaults.font.family = "'JetBrains Mono', monospace";
+  Chart.defaults.font.size = 11;
+
+  function initChart() {
+    const ctx = document.getElementById('cost-chart').getContext('2d');
+    costChart = new Chart(ctx, {
+      type: 'bar',
+      data: { labels: [], datasets: [{
+        label: 'Cost ($)',
+        data: [],
+        backgroundColor: 'rgba(34, 197, 94, 0.3)',
+        borderColor: '#22c55e',
+        borderWidth: 1,
+        borderRadius: 3,
+        barPercentage: 0.7,
+      }]},
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1a1a26', borderColor: '#2a2a3e', borderWidth: 1,
+            titleColor: '#e2e2e8', bodyColor: '#22c55e',
+            callbacks: { label: ctx => `$${ctx.parsed.y.toFixed(4)}` }
+          }
+        },
+        scales: {
+          x: { grid: { color: '#1e1e2e' }, ticks: { maxRotation: 0 } },
+          y: { grid: { color: '#1e1e2e' }, ticks: {
+            callback: v => '$' + v.toFixed(3)
+          }}
+        }
+      }
+    });
+  }
+
+  function fmt(n) {
+    if (n >= 1_000_000) return (n/1_000_000).toFixed(1) + 'M';
+    if (n >= 1_000) return (n/1_000).toFixed(1) + 'K';
+    return n.toString();
+  }
+
+  function timeAgo(ts) {
+    const d = new Date(ts * 1000);
+    const now = Date.now();
+    const diff = (now - d.getTime()) / 1000;
+    if (diff < 60) return Math.floor(diff) + 's ago';
+    if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+    if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
+    return d.toLocaleDateString();
+  }
+
+  const MODEL_COLORS = [
+    '#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#a855f7',
+    '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#6366f1'
+  ];
+
+  async function fetchData() {
+    try {
+      const [summary, models, timeline, recent] = await Promise.all([
+        fetch(`${API}/api/summary?hours=${currentHours}`).then(r => r.json()),
+        fetch(`${API}/api/by-model?hours=${currentHours}`).then(r => r.json()),
+        fetch(`${API}/api/over-time?hours=${currentHours}&bucket=${currentHours <= 6 ? 5 : currentHours <= 24 ? 30 : currentHours <= 168 ? 60 : 360}`).then(r => r.json()),
+        fetch(`${API}/api/recent?limit=30`).then(r => r.json()),
+      ]);
+
+      // Update stats
+      const cost = summary.total_cost || 0;
+      document.getElementById('total-cost').textContent = '$' + cost.toFixed(4);
+      document.getElementById('total-cost').className = 'stat-value cost' + (cost > 10 ? ' high' : '');
+      const reqs = summary.total_requests || 0;
+      document.getElementById('total-requests').textContent = fmt(reqs);
+      document.getElementById('avg-cost').textContent = reqs > 0 ? `avg $${(cost/reqs).toFixed(4)} / request` : 'no requests yet';
+      document.getElementById('req-rate').textContent = `${(reqs / Math.max(currentHours, 1)).toFixed(1)} / hour`;
+
+      const inT = summary.total_input_tokens || 0;
+      const outT = summary.total_output_tokens || 0;
+      document.getElementById('total-tokens').textContent = fmt(inT + outT);
+      document.getElementById('token-split').textContent = `in: ${fmt(inT)} / out: ${fmt(outT)}`;
+      document.getElementById('avg-latency').textContent = Math.round(summary.avg_latency || 0) + 'ms';
+
+      // Update chart
+      if (costChart && timeline.length > 0) {
+        costChart.data.labels = timeline.map(t => {
+          const d = new Date(t.bucket * 1000);
+          return currentHours <= 24
+            ? d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
+            : d.toLocaleDateString([], {month:'short', day:'numeric'});
+        });
+        costChart.data.datasets[0].data = timeline.map(t => t.cost);
+        costChart.update('none');
+      }
+
+      // Model bars
+      const barsEl = document.getElementById('model-bars');
+      if (models.length === 0) {
+        barsEl.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:20px 0">No data yet</div>';
+      } else {
+        const maxCost = Math.max(...models.map(m => m.total_cost));
+        barsEl.innerHTML = models.slice(0, 8).map((m, i) => {
+          const pct = maxCost > 0 ? (m.total_cost / maxCost * 100) : 0;
+          const color = MODEL_COLORS[i % MODEL_COLORS.length];
+          return `
+            <div class="model-row">
+              <div class="model-name" title="${m.model}">${m.model}</div>
+              <div class="model-bar-wrap">
+                <div class="model-bar" style="width:${pct}%;background:${color}20;color:${color}">
+                  ${m.requests} req
+                </div>
+              </div>
+              <div class="model-cost">$${m.total_cost.toFixed(4)}</div>
+            </div>`;
+        }).join('');
+      }
+
+      // Request log
+      const logEl = document.getElementById('request-log');
+      if (recent.length === 0) {
+        logEl.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:40px">
+          Waiting for requests...<br><br>
+          <code style="background:var(--bg-card-hover);padding:8px 16px;border-radius:6px;color:var(--accent);font-size:12px">
+            base_url="http://localhost:8877/v1"
+          </code>
+        </td></tr>`;
+      } else {
+        logEl.innerHTML = recent.map(r => {
+          const isExpensive = r.total_cost > 0.01;
+          return `<tr>
+            <td>${timeAgo(r.timestamp)}</td>
+            <td><span class="provider-badge provider-${r.provider}">${r.provider}</span></td>
+            <td>${r.model}</td>
+            <td>${fmt(r.input_tokens)}</td>
+            <td>${fmt(r.output_tokens)}</td>
+            <td class="cost-cell${isExpensive ? ' expensive' : ''}">$${r.total_cost.toFixed(4)}</td>
+            <td>${r.latency_ms}ms</td>
+            <td style="color:var(--text-muted)">${r.tag || '—'}</td>
+          </tr>`;
+        }).join('');
+      }
+    } catch (e) {
+      console.error('Fetch error:', e);
+    }
+  }
+
+  // Time filter buttons
+  document.querySelectorAll('.time-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentHours = parseInt(btn.dataset.hours);
+      fetchData();
+    });
+  });
+
+  // Init
+  initChart();
+  fetchData();
+  setInterval(fetchData, 5000); // refresh every 5s
+</script>
+</body>
+</html>
