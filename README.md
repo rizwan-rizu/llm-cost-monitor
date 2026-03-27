@@ -4,6 +4,8 @@
 
 A transparent proxy that sits between your app and any LLM API, logs every request's token usage and cost, and serves a real-time dashboard. You don't touch your application code. Just change the base URL and you're done.
 
+**[→ Live Demo](https://rizwan-rizu.github.io/llm-cost-monitor/)** — see the dashboard in action with simulated traffic
+
 ---
 
 ## Why?

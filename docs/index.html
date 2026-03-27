@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM Cost Monitor — Live Demo</title>
+<meta name="description" content="Track every dollar your AI spends. Real-time LLM cost dashboard.">
+<meta property="og:title" content="LLM Cost Monitor — Live Demo">
+<meta property="og:description" content="Track every dollar your AI spends. Transparent proxy + real-time dashboard for any LLM API.">
+<meta property="og:type" content="website">
+<style>
+  :root {
+    --bg:#0a0a0f;--card:#12121a;--card-h:#1a1a26;--bdr:#1e1e2e;
+    --t1:#e2e2e8;--t2:#6e6e82;--t3:#44445a;
+    --grn:#22c55e;--grn-d:rgba(34,197,94,0.12);
+    --red:#ef4444;--red-d:rgba(239,68,68,0.12);
+    --amb:#f59e0b;--amb-d:rgba(245,158,11,0.12);
+    --blu:#3b82f6;--blu-d:rgba(59,130,246,0.12);
+    --pur:#a855f7;--pur-d:rgba(168,85,247,0.12);
+    --cyn:#06b6d4;
+    --mono:'JetBrains Mono',ui-monospace,'Cascadia Code',Consolas,monospace;
+    --sans:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:var(--sans);background:var(--bg);color:var(--t1);min-height:100vh;overflow-x:hidden}
+  .wrap{max-width:1400px;margin:0 auto;padding:24px 32px}
+
+  /* Demo banner */
+  .demo-bar{background:linear-gradient(90deg,var(--grn-d),rgba(34,197,94,0.04));border-bottom:1px solid rgba(34,197,94,0.15);padding:10px 32px;display:flex;align-items:center;justify-content:space-between;font-size:13px}
+  .demo-bar span{color:var(--grn);font-weight:600}
+  .demo-bar a{color:var(--grn);text-decoration:none;font-weight:600;background:var(--grn-d);padding:5px 14px;border-radius:6px;border:1px solid rgba(34,197,94,0.2);transition:all .15s;font-size:12px}
+  .demo-bar a:hover{background:rgba(34,197,94,0.2)}
+
+  .hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;padding-bottom:20px;border-bottom:1px solid var(--bdr)}
+  .hdr-l{display:flex;align-items:center;gap:14px}
+  .logo{width:36px;height:36px;border-radius:9px;background:linear-gradient(135deg,var(--grn),#059669);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#000;font-family:var(--mono)}
+  .hdr h1{font-size:18px;font-weight:600;letter-spacing:-0.02em}
+  .hdr h1 span{color:var(--t3);font-weight:400;font-size:14px}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--grn);animation:p 2s ease-in-out infinite}
+  @keyframes p{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(34,197,94,0.4)}50%{opacity:.6;box-shadow:0 0 0 5px rgba(34,197,94,0)}}
+  .demo-tag{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--amb);background:var(--amb-d);padding:3px 8px;border-radius:4px}
+  .tf{display:flex;gap:3px;background:var(--card);border-radius:8px;padding:3px;border:1px solid var(--bdr)}
+  .tb{padding:5px 13px;border:none;background:0;color:var(--t2);font-size:12px;font-weight:500;border-radius:5px;cursor:pointer;font-family:inherit;transition:all .15s}
+  .tb.on{background:var(--grn-d);color:var(--grn)}
+  .tb:hover:not(.on){color:var(--t1)}
+
+  .sg{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+  .sc{background:var(--card);border:1px solid var(--bdr);border-radius:10px;padding:16px 20px}
+  .sc-i{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:13px;font-family:var(--mono);font-weight:700;margin-bottom:10px}
+  .sc-l{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--t2);margin-bottom:6px;font-weight:500}
+  .sc-v{font-family:var(--mono);font-size:26px;font-weight:700;letter-spacing:-0.02em;line-height:1}
+  .sc-s{font-size:11px;color:var(--t3);margin-top:5px;font-family:var(--mono)}
+  .cg{color:var(--grn)}.cr{color:var(--red)}
+
+  .cg2{display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:20px}
+  .cd{background:var(--card);border:1px solid var(--bdr);border-radius:10px;padding:16px 20px;overflow:hidden}
+  .ct{font-size:11px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:14px}
+  .ch-w{position:relative;width:100%;height:240px}
+
+  .mb{display:flex;flex-direction:column;gap:10px}
+  .mr{display:flex;align-items:center;gap:10px}
+  .mn{width:170px;font-size:11px;font-family:var(--mono);color:var(--t2);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0}
+  .mw{flex:1;height:22px;background:rgba(255,255,255,.03);border-radius:3px;overflow:hidden}
+  .mb-bar{height:100%;border-radius:3px;min-width:2px;display:flex;align-items:center;padding-left:7px;font-size:10px;font-family:var(--mono);font-weight:600;transition:width .4s ease}
+  .mc{width:70px;text-align:right;font-size:11px;font-family:var(--mono);color:var(--grn);flex-shrink:0}
+
+  .tw{overflow-x:auto;max-height:420px;overflow-y:auto}
+  table{width:100%;border-collapse:collapse;font-size:12px;font-family:var(--mono)}
+  th{text-align:left;padding:8px 10px;color:var(--t3);font-weight:500;font-size:10px;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--bdr);position:sticky;top:0;background:var(--card);z-index:1}
+  td{padding:8px 10px;border-bottom:1px solid var(--bdr);color:var(--t2);white-space:nowrap}
+  tr:hover td{color:var(--t1);background:var(--card-h)}
+  .pb{display:inline-block;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:600;text-transform:uppercase}
+  .p-openai{background:var(--grn-d);color:var(--grn)}
+  .p-anthropic{background:var(--amb-d);color:var(--amb)}
+  .p-google{background:var(--blu-d);color:var(--blu)}
+  .p-groq{background:var(--pur-d);color:var(--pur)}
+  .p-deepseek{background:var(--blu-d);color:var(--cyn)}
+  .cc{color:var(--grn);font-weight:600}
+  .cx{color:var(--red)}
+
+  @media(max-width:1000px){.sg{grid-template-columns:repeat(2,1fr)}.cg2{grid-template-columns:1fr}.wrap{padding:16px}.demo-bar{padding:10px 16px;flex-direction:column;gap:8px;text-align:center}}
+  @media(max-width:600px){.sg{grid-template-columns:1fr}.hdr{flex-direction:column;gap:12px;align-items:flex-start}}
+</style>
+</head>
+<body>
+
+<!-- Demo banner -->
+<div class="demo-bar">
+  <div><span>Live Demo</span> — this is simulated data. New requests appear every few seconds.</div>
+  <a href="https://github.com/rizwan-rizu/llm-cost-monitor">★ Star on GitHub</a>
+</div>
+
+<div class="wrap">
+  <div class="hdr">
+    <div class="hdr-l">
+      <div class="logo">$</div>
+      <h1>LLM Cost Monitor <span>v0.1</span></h1>
+      <div class="dot" title="Live"></div>
+      <div class="demo-tag">demo</div>
+    </div>
+    <div class="tf">
+      <button class="tb" data-h="1">1h</button>
+      <button class="tb" data-h="6">6h</button>
+      <button class="tb on" data-h="24">24h</button>
+      <button class="tb" data-h="168">7d</button>
+      <button class="tb" data-h="720">30d</button>
+    </div>
+  </div>
+
+  <div class="sg">
+    <div class="sc">
+      <div class="sc-i" style="background:var(--grn-d);color:var(--grn)">$</div>
+      <div class="sc-l">Total Spend</div>
+      <div class="sc-v cg" id="s-cost">$0.0000</div>
+      <div class="sc-s" id="s-avg">—</div>
+    </div>
+    <div class="sc">
+      <div class="sc-i" style="background:var(--blu-d);color:var(--blu)">#</div>
+      <div class="sc-l">Requests</div>
+      <div class="sc-v" id="s-reqs">0</div>
+      <div class="sc-s" id="s-rate">0 / hour</div>
+    </div>
+    <div class="sc">
+      <div class="sc-i" style="background:var(--amb-d);color:var(--amb)">T</div>
+      <div class="sc-l">Tokens</div>
+      <div class="sc-v" id="s-tok">0</div>
+      <div class="sc-s" id="s-split">in: 0 / out: 0</div>
+    </div>
+    <div class="sc">
+      <div class="sc-i" style="background:var(--red-d);color:var(--red)">~</div>
+      <div class="sc-l">Avg Latency</div>
+      <div class="sc-v" id="s-lat">0ms</div>
+      <div class="sc-s">per request</div>
+    </div>
+  </div>
+
+  <div class="cg2">
+    <div class="cd">
+      <div class="ct">Spend Over Time</div>
+      <div class="ch-w"><canvas id="ch"></canvas></div>
+    </div>
+    <div class="cd">
+      <div class="ct">Cost by Model</div>
+      <div class="mb" id="bars"></div>
+    </div>
+  </div>
+
+  <div class="cd">
+    <div class="ct">Recent Requests</div>
+    <div class="tw">
+      <table>
+        <thead><tr><th>Time</th><th>Provider</th><th>Model</th><th>Input</th><th>Output</th><th>Cost</th><th>Latency</th><th>Tag</th></tr></thead>
+        <tbody id="log"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+// ──────────────────────────────────────────────
+// Simulated data engine — no backend needed
+// ──────────────────────────────────────────────
+
+const SCENARIOS = [
+  { p:'openai', m:'gpt-4o-mini', iR:[80,400], oR:[10,60], tags:['classifier','router','intent-detect'], w:30, iP:0.15, oP:0.60, lat:300 },
+  { p:'openai', m:'gpt-4o', iR:[500,3000], oR:[200,1500], tags:['chat','agent-main','summarize','generate'], w:25, iP:2.50, oP:10.00, lat:800 },
+  { p:'anthropic', m:'claude-sonnet-4-20250514', iR:[800,5000], oR:[500,3000], tags:['agent-research','code-review','analysis'], w:20, iP:3.00, oP:15.00, lat:900 },
+  { p:'anthropic', m:'claude-3-5-haiku-20241022', iR:[100,800], oR:[50,300], tags:['triage','extract','tag','quick-answer'], w:15, iP:0.80, oP:4.00, lat:400 },
+  { p:'google', m:'gemini-2.0-flash', iR:[200,1000], oR:[100,500], tags:['batch-process','translate','format'], w:12, iP:0.10, oP:0.40, lat:250 },
+  { p:'openai', m:'gpt-4o', iR:[4000,12000], oR:[2000,6000], tags:['agent-loop','deep-research'], w:5, iP:2.50, oP:10.00, lat:1800 },
+  { p:'anthropic', m:'claude-opus-4-20250514', iR:[3000,8000], oR:[1000,4000], tags:['critical-analysis','architecture'], w:3, iP:15.00, oP:75.00, lat:2000 },
+  { p:'deepseek', m:'deepseek-chat', iR:[500,2000], oR:[200,1000], tags:['draft','brainstorm','explore'], w:8, iP:0.27, oP:1.10, lat:600 },
+  { p:'groq', m:'llama-3.3-70b-versatile', iR:[300,1500], oR:[100,800], tags:['real-time','autocomplete','streaming'], w:10, iP:0.59, oP:0.79, lat:200 },
+];
+
+function rand(a,b){return Math.floor(Math.random()*(b-a+1))+a}
+function pick(arr){return arr[Math.floor(Math.random()*arr.length)]}
+function wPick(items){
+  const tot=items.reduce((s,i)=>s+i.w,0);
+  let r=Math.random()*tot,c=0;
+  for(const i of items){c+=i.w;if(r<=c)return i}
+  return items[0]
+}
+
+// Generate one request
+function genReq(tsOffset){
+  const s=wPick(SCENARIOS);
+  const iT=rand(...s.iR), oT=rand(...s.oR);
+  const cost=((iT/1e6)*s.iP)+((oT/1e6)*s.oP);
+  const lat=Math.max(100, s.lat + rand(-150,300) + Math.floor(oT*0.2));
+  const ts = (Date.now()/1000) - (tsOffset||0);
+  return { timestamp:ts, provider:s.p, model:s.m, input_tokens:iT, output_tokens:oT, total_cost:cost, latency_ms:lat, tag:pick(s.tags) }
+}
+
+// Seed historical data
+const allRequests = [];
+function seed(){
+  for(let h=48;h>0;h--){
+    const hod=(24-h)%24;
+    let count = (hod>=2&&hod<=7) ? rand(3,8) : (hod>=9&&hod<=17) ? rand(20,40) : rand(8,18);
+    for(let i=0;i<count;i++){
+      allRequests.push(genReq(h*3600 - rand(0,3599)));
+    }
+  }
+  allRequests.sort((a,b)=>b.timestamp-a.timestamp);
+}
+seed();
+
+// ──────────────────────────────────────────────
+// Dashboard rendering
+// ──────────────────────────────────────────────
+
+let H=24, chart=null, chartOk=false;
+const $=id=>document.getElementById(id);
+const fmt=n=>n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3).toFixed(1)+'K':String(n);
+const ago=ts=>{const s=Date.now()/1000-ts;return s<60?~~s+'s ago':s<3600?~~(s/60)+'m ago':s<86400?~~(s/3600)+'h ago':new Date(ts*1000).toLocaleDateString()};
+const CL=['#22c55e','#3b82f6','#f59e0b','#ef4444','#a855f7','#06b6d4','#ec4899','#84cc16'];
+
+function render(){
+  const now=Date.now()/1000;
+  const since=now-(H*3600);
+  const filtered=allRequests.filter(r=>r.timestamp>=since);
+
+  if(!filtered.length)return;
+
+  // Summary
+  const totalCost=filtered.reduce((s,r)=>s+r.total_cost,0);
+  const totalIn=filtered.reduce((s,r)=>s+r.input_tokens,0);
+  const totalOut=filtered.reduce((s,r)=>s+r.output_tokens,0);
+  const avgLat=filtered.reduce((s,r)=>s+r.latency_ms,0)/filtered.length;
+  const rq=filtered.length;
+
+  $('s-cost').textContent='$'+totalCost.toFixed(4);
+  $('s-cost').className='sc-v '+(totalCost>10?'cr':'cg');
+  $('s-avg').textContent='avg $'+(totalCost/rq).toFixed(4)+' / req';
+  $('s-reqs').textContent=fmt(rq);
+  $('s-rate').textContent=(rq/Math.max(H,1)).toFixed(1)+' / hour';
+  $('s-tok').textContent=fmt(totalIn+totalOut);
+  $('s-split').textContent='in: '+fmt(totalIn)+' / out: '+fmt(totalOut);
+  $('s-lat').textContent=~~avgLat+'ms';
+
+  // Timeline
+  if(chartOk&&chart){
+    const bucketSec=(H<=6?5:H<=24?30:H<=168?60:360)*60;
+    const buckets={};
+    filtered.forEach(r=>{
+      const b=Math.floor(r.timestamp/bucketSec)*bucketSec;
+      buckets[b]=(buckets[b]||0)+r.total_cost;
+    });
+    const keys=Object.keys(buckets).sort((a,b)=>a-b);
+    chart.data.labels=keys.map(k=>{
+      const d=new Date(k*1000);
+      return H<=24?d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):d.toLocaleDateString([],{month:'short',day:'numeric'})
+    });
+    chart.data.datasets[0].data=keys.map(k=>buckets[k]);
+    chart.update('none');
+  }
+
+  // Model bars
+  const byModel={};
+  filtered.forEach(r=>{
+    if(!byModel[r.model])byModel[r.model]={cost:0,reqs:0,provider:r.provider};
+    byModel[r.model].cost+=r.total_cost;
+    byModel[r.model].reqs++;
+  });
+  const models=Object.entries(byModel).sort((a,b)=>b[1].cost-a[1].cost).slice(0,8);
+  const mx=models.length?models[0][1].cost:0;
+  $('bars').innerHTML=models.map(([m,d],i)=>{
+    const p=mx>0?(d.cost/mx*100):0, cl=CL[i%CL.length];
+    return'<div class="mr"><div class="mn" title="'+m+'">'+m+'</div><div class="mw"><div class="mb-bar" style="width:'+p+'%;background:'+cl+'20;color:'+cl+'">'+d.reqs+' req</div></div><div class="mc">$'+d.cost.toFixed(4)+'</div></div>'
+  }).join('');
+
+  // Request log
+  const recent=filtered.slice(0,30);
+  $('log').innerHTML=recent.map(r=>'<tr><td>'+ago(r.timestamp)+'</td><td><span class="pb p-'+r.provider+'">'+r.provider+'</span></td><td>'+r.model+'</td><td>'+fmt(r.input_tokens)+'</td><td>'+fmt(r.output_tokens)+'</td><td class="cc'+(r.total_cost>.01?' cx':'')+'">$'+r.total_cost.toFixed(4)+'</td><td>'+r.latency_ms+'ms</td><td style="color:var(--t3)">'+r.tag+'</td></tr>').join('');
+}
+
+// Simulate live traffic — new request every 1.5-4s
+function addLive(){
+  const req=genReq(0);
+  allRequests.unshift(req);
+  if(allRequests.length>2000)allRequests.pop();
+  render();
+  setTimeout(addLive, rand(1500,4000));
+}
+
+// Chart.js async
+function initChart(){
+  const s=document.createElement('script');
+  s.src='https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js';
+  s.onload=()=>{
+    Chart.defaults.color='#6e6e82';
+    Chart.defaults.font.family="ui-monospace,Consolas,monospace";
+    Chart.defaults.font.size=11;
+    chart=new Chart($('ch'),{
+      type:'bar',
+      data:{labels:[],datasets:[{data:[],backgroundColor:'rgba(34,197,94,0.3)',borderColor:'#22c55e',borderWidth:1,borderRadius:3,barPercentage:.7}]},
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:{backgroundColor:'#1a1a26',borderColor:'#2a2a3e',borderWidth:1,titleColor:'#e2e2e8',bodyColor:'#22c55e',callbacks:{label:c=>'$'+c.parsed.y.toFixed(4)}}},
+        scales:{x:{grid:{color:'#1e1e2e'},ticks:{maxRotation:0}},y:{grid:{color:'#1e1e2e'},ticks:{callback:v=>'$'+v.toFixed(3)}}}
+      }
+    });
+    chartOk=true;
+    render();
+  };
+  document.body.appendChild(s);
+}
+
+// Time filter
+document.querySelectorAll('.tb').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('.tb').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');H=+b.dataset.h;render()
+}));
+
+// Async fonts
+const fl=document.createElement('link');fl.rel='stylesheet';
+fl.href='https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap';
+document.head.appendChild(fl);
+
+// Boot
+render();
+initChart();
+setTimeout(addLive, 2000);
+setInterval(render, 5000);
+</script>
+</body>
+</html>
