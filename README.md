@@ -131,6 +131,21 @@ response = client.chat.completions.create(
 )
 ```
 
+### Streaming Support
+
+`stream=True` works out of the box. The proxy detects streaming requests and forwards SSE chunks to your client in real time, then logs accurate token counts and cost to the dashboard after the stream completes — no estimation, no guesswork.
+
+```python
+# Works exactly as before — no changes needed
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "Hello"}],
+    stream=True,
+)
+for chunk in response:
+    print(chunk.choices[0].delta.content, end="")
+```
+
 ### CLI Summary
 ```bash
 llm-cost-monitor summary --hours 24
@@ -198,7 +213,7 @@ If a model isn't in the pricing table, the request is still proxied and logged (
 ## Roadmap
 
 - [ ] Budget alerts and hard kill switches (abort request if budget exceeded)
-- [ ] Streaming response support with token counting
+- [x] Streaming response support with token counting
 - [ ] Export to CSV/JSON
 - [ ] Prometheus metrics endpoint
 - [ ] Slack/Discord alerts when spend exceeds threshold
@@ -211,7 +226,7 @@ PRs welcome. The main things that need help:
 1. **Pricing updates** when providers change their rates
 2. **New provider parsers** for providers not yet supported
 3. **Dashboard improvements** (it's a single HTML file, easy to hack on)
-4. **Streaming support** for SSE responses
+4. **New provider parsers** for providers not yet supported via a unique API format
 
 ## License
 
