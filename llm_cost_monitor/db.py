@@ -55,9 +55,16 @@ def init_db():
             name TEXT UNIQUE NOT NULL,
             limit_usd REAL NOT NULL,
             period TEXT NOT NULL DEFAULT 'daily',
-            active INTEGER DEFAULT 1
+            active INTEGER DEFAULT 1,
+            hard_kill INTEGER DEFAULT 0
         );
     """)
+    # Migrate: add hard_kill column if upgrading from an older schema
+    try:
+        conn.execute("ALTER TABLE budgets ADD COLUMN hard_kill INTEGER DEFAULT 0")
+        conn.commit()
+    except Exception:
+        pass  # Column already exists
     conn.commit()
     conn.close()
 
@@ -205,17 +212,8 @@ def get_cost_by_tag(hours: int = 24):
     return [dict(r) for r in rows]
 
 
-def check_budget(name: str) -> dict | None:
-    """Check if a budget limit has been exceeded."""
-    conn = get_connection()
-    budget = conn.execute(
-        "SELECT * FROM budgets WHERE name = ? AND active = 1", (name,)
-    ).fetchone()
-
-    if not budget:
-        conn.close()
-        return None
-
+def _budget_status(budget: sqlite3.Row, conn: sqlite3.Connection) -> dict:
+    """Compute current spend against a budget row and return a status dict."""
     period_hours = {"hourly": 1, "daily": 24, "weekly": 168, "monthly": 720}
     hours = period_hours.get(budget["period"], 24)
     since = time.time() - (hours * 3600)
@@ -225,12 +223,80 @@ def check_budget(name: str) -> dict | None:
         (since,),
     ).fetchone()
 
-    conn.close()
     return {
         "name": budget["name"],
         "limit": budget["limit_usd"],
-        "spent": spent["spent"],
-        "remaining": budget["limit_usd"] - spent["spent"],
+        "spent": round(spent["spent"], 6),
+        "remaining": round(budget["limit_usd"] - spent["spent"], 6),
         "exceeded": spent["spent"] >= budget["limit_usd"],
         "period": budget["period"],
+        "hard_kill": bool(budget["hard_kill"]),
+        "active": bool(budget["active"]),
     }
+
+
+def check_budget(name: str) -> dict | None:
+    """Check if a named budget limit has been exceeded. Returns None if not found."""
+    conn = get_connection()
+    budget = conn.execute(
+        "SELECT * FROM budgets WHERE name = ? AND active = 1", (name,)
+    ).fetchone()
+
+    if not budget:
+        conn.close()
+        return None
+
+    result = _budget_status(budget, conn)
+    conn.close()
+    return result
+
+
+def check_all_budgets() -> list[dict]:
+    """Return status for all active budgets."""
+    conn = get_connection()
+    budgets = conn.execute("SELECT * FROM budgets WHERE active = 1").fetchall()
+    result = [_budget_status(b, conn) for b in budgets]
+    conn.close()
+    return result
+
+
+def set_budget(name: str, limit_usd: float, period: str = "daily", hard_kill: bool = False) -> dict:
+    """Create or update a named budget. Returns the new status."""
+    valid_periods = {"hourly", "daily", "weekly", "monthly"}
+    if period not in valid_periods:
+        raise ValueError(f"period must be one of: {', '.join(sorted(valid_periods))}")
+
+    conn = get_connection()
+    conn.execute(
+        """INSERT INTO budgets (name, limit_usd, period, hard_kill, active)
+           VALUES (?, ?, ?, ?, 1)
+           ON CONFLICT(name) DO UPDATE SET
+               limit_usd = excluded.limit_usd,
+               period = excluded.period,
+               hard_kill = excluded.hard_kill,
+               active = 1""",
+        (name, limit_usd, period, int(hard_kill)),
+    )
+    conn.commit()
+    budget = conn.execute("SELECT * FROM budgets WHERE name = ?", (name,)).fetchone()
+    result = _budget_status(budget, conn)
+    conn.close()
+    return result
+
+
+def delete_budget(name: str) -> bool:
+    """Delete a budget by name. Returns True if it existed."""
+    conn = get_connection()
+    cursor = conn.execute("DELETE FROM budgets WHERE name = ?", (name,))
+    conn.commit()
+    conn.close()
+    return cursor.rowcount > 0
+
+
+def list_budgets() -> list[dict]:
+    """Return all budgets (active and inactive) with current spend status."""
+    conn = get_connection()
+    budgets = conn.execute("SELECT * FROM budgets ORDER BY name").fetchall()
+    result = [_budget_status(b, conn) for b in budgets]
+    conn.close()
+    return result
