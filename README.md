@@ -131,6 +131,41 @@ response = client.chat.completions.create(
 )
 ```
 
+### Budget Controls
+
+Set spending limits with soft alerts or hard kill switches that abort requests before they reach the LLM API.
+
+```bash
+# Soft alert — warns in server logs, still forwards the request
+llm-cost-monitor budget set --limit 5.00 --period daily
+
+# Hard kill switch — returns HTTP 429 once $1/hour is exceeded
+llm-cost-monitor budget set --name ci --limit 1.00 --period hourly --hard-kill
+
+# View all budgets with current spend
+llm-cost-monitor budget list
+```
+
+Budgets are also manageable via the REST API:
+```bash
+# Create/update a budget
+curl -X POST http://localhost:8877/api/budgets \
+  -H 'Content-Type: application/json' \
+  -d '{"name": "default", "limit_usd": 5.0, "period": "daily", "hard_kill": false}'
+
+# Check status (useful for dashboard polling)
+curl http://localhost:8877/api/budgets/status
+```
+
+When a hard kill budget is exceeded, callers receive a structured `429`:
+```json
+{
+  "error": "budget_exceeded",
+  "message": "Budget 'default' exceeded: $5.0012 spent of $5.0000 daily limit.",
+  "budget": { "name": "default", "limit": 5.0, "spent": 5.0012, "period": "daily" }
+}
+```
+
 ### CLI Summary
 ```bash
 llm-cost-monitor summary --hours 24
@@ -197,7 +232,7 @@ If a model isn't in the pricing table, the request is still proxied and logged (
 
 ## Roadmap
 
-- [ ] Budget alerts and hard kill switches (abort request if budget exceeded)
+- [x] Budget alerts and hard kill switches (abort request if budget exceeded)
 - [ ] Streaming response support with token counting
 - [ ] Export to CSV/JSON
 - [ ] Prometheus metrics endpoint
