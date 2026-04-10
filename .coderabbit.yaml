@@ -1,0 +1,39 @@
+language: en-US
+
+reviews:
+  profile: chill          # assertive | chill — chill avoids noise on obvious/trivial things
+  request_changes_workflow: false   # don't block merges, just leave comments
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+
+  path_filters:
+    - "!**/*.lock"
+    - "!**/demo.py"
+
+  path_instructions:
+    - path: "llm_cost_monitor/pricing.py"
+      instructions: >
+        Flag any model entries where input or output price looks obviously wrong
+        (e.g. output cheaper than input, or price orders of magnitude off vs peers).
+        Do not suggest style changes.
+
+    - path: "llm_cost_monitor/server.py"
+      instructions: >
+        Focus on correctness of the proxy logic, header handling, and error responses.
+        Check that streaming and non-streaming paths are both covered.
+        Flag any security issues (header injection, missing input validation on API endpoints).
+
+    - path: "llm_cost_monitor/db.py"
+      instructions: >
+        Review SQL for injection risks (parameterised queries only),
+        connection leak risks (connections always closed), and schema migration safety.
+
+    - path: "llm_cost_monitor/streaming.py"
+      instructions: >
+        Focus on correctness of SSE parsing for both OpenAI and Anthropic formats.
+        Verify the httpx client lifecycle — connections should always be closed after streaming.
+
+chat:
+  auto_reply: true

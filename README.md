@@ -1,5 +1,7 @@
 # $ llm-cost-monitor
 
+[![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/rizwan-rizu/llm-cost-monitor?utm_source=oss&utm_medium=github&utm_campaign=rizwan-rizu%2Fllm-cost-monitor&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)](https://coderabbit.ai)
+
 **Track every dollar your AI spends.** One command. Works with any language. Zero code changes.
 
 A transparent proxy that sits between your app and any LLM API, logs every request's token usage and cost, and serves a real-time dashboard. You don't touch your application code. Just change the base URL and you're done.
