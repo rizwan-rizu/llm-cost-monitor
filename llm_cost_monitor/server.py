@@ -23,6 +23,7 @@ from .db import (
 )
 from .pricing import calculate_cost
 from .providers import detect_provider
+from .streaming import stream_openai, stream_anthropic
 
 logger = logging.getLogger("llm-cost-monitor")
 
@@ -223,24 +224,51 @@ async def _proxy_request(request: Request, target_url: str, provider_hint: str):
     request_body = {}
     model_from_request = "unknown"
     tag = ""
+    is_streaming = False
     try:
         if body_bytes:
             request_body = json.loads(body_bytes)
             model_from_request = request_body.get("model", "unknown")
             # Support optional cost-monitor tag in request
             tag = request_body.pop("_cost_tag", "")
+            is_streaming = bool(request_body.get("stream", False))
     except (json.JSONDecodeError, AttributeError):
         pass
 
-    # Forward the request
+    send_bytes = body_bytes if not tag else json.dumps(request_body).encode()
+    params = dict(request.query_params)
+
+    # Route streaming requests through dedicated handlers
+    if is_streaming:
+        client = httpx.AsyncClient(timeout=300.0)
+        try:
+            if provider_hint == "anthropic":
+                return await stream_anthropic(
+                    client, request.method, target_url, headers,
+                    send_bytes, params, provider_hint, tag, model_from_request,
+                )
+            else:
+                return await stream_openai(
+                    client, request.method, target_url, headers,
+                    send_bytes, params, provider_hint, tag, model_from_request,
+                )
+        except httpx.RequestError as e:
+            await client.aclose()
+            logger.error(f"Streaming proxy error: {e}")
+            return JSONResponse(
+                {"error": f"Failed to reach {provider_hint}: {str(e)}"},
+                status_code=502,
+            )
+
+    # Forward the (non-streaming) request
     try:
         async with httpx.AsyncClient(timeout=300.0) as client:
             response = await client.request(
                 method=request.method,
                 url=target_url,
                 headers=headers,
-                content=body_bytes if not tag else json.dumps(request_body).encode(),
-                params=dict(request.query_params),
+                content=send_bytes,
+                params=params,
             )
     except httpx.RequestError as e:
         logger.error(f"Proxy error: {e}")
