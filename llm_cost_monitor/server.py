@@ -16,7 +16,11 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from .db import init_db, log_request, get_summary, get_cost_by_model, get_cost_over_time, get_recent_requests, get_cost_by_provider, get_cost_by_tag
+from .db import (
+    init_db, log_request, get_summary, get_cost_by_model, get_cost_over_time,
+    get_recent_requests, get_cost_by_provider, get_cost_by_tag,
+    check_all_budgets, set_budget, delete_budget, list_budgets,
+)
 from .pricing import calculate_cost
 from .providers import detect_provider
 from .streaming import stream_openai, stream_anthropic
@@ -95,6 +99,59 @@ async def api_by_tag(hours: int = 24):
 
 
 # ──────────────────────────────────────────────
+# Budget management endpoints
+# ──────────────────────────────────────────────
+
+@app.get("/api/budgets")
+async def api_list_budgets():
+    """List all budgets with current spend status."""
+    return JSONResponse(list_budgets())
+
+
+@app.post("/api/budgets")
+async def api_set_budget(request: Request):
+    """Create or update a budget.
+
+    Body: {"name": str, "limit_usd": float, "period": "hourly|daily|weekly|monthly", "hard_kill": bool}
+    """
+    try:
+        body = await request.json()
+        name = body.get("name", "default")
+        limit_usd = float(body["limit_usd"])
+        period = body.get("period", "daily")
+        hard_kill = bool(body.get("hard_kill", False))
+    except (KeyError, ValueError, TypeError) as e:
+        return JSONResponse({"error": f"Invalid request: {e}"}, status_code=400)
+
+    try:
+        result = set_budget(name, limit_usd, period, hard_kill)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+    return JSONResponse(result, status_code=201)
+
+
+@app.delete("/api/budgets/{name}")
+async def api_delete_budget(name: str):
+    """Delete a budget by name."""
+    deleted = delete_budget(name)
+    if not deleted:
+        return JSONResponse({"error": f"Budget '{name}' not found"}, status_code=404)
+    return JSONResponse({"deleted": name})
+
+
+@app.get("/api/budgets/status")
+async def api_budget_status():
+    """Check all active budgets and return any that are exceeded."""
+    all_budgets = check_all_budgets()
+    return JSONResponse({
+        "budgets": all_budgets,
+        "any_exceeded": any(b["exceeded"] for b in all_budgets),
+        "hard_kill_triggered": any(b["exceeded"] and b["hard_kill"] for b in all_budgets),
+    })
+
+
+# ──────────────────────────────────────────────
 # Proxy endpoints - one per provider
 # ──────────────────────────────────────────────
 
@@ -129,6 +186,31 @@ async def proxy_groq(request: Request, path: str):
 async def _proxy_request(request: Request, target_url: str, provider_hint: str):
     """Forward request to target, log cost on response."""
     start = time.time()
+
+    # ── Budget check ──────────────────────────────────────────────────────────
+    # Check all active budgets before forwarding. Hard-kill budgets abort the
+    # request with a 429; soft budgets log a warning but still forward.
+    for budget in check_all_budgets():
+        if budget["exceeded"]:
+            msg = (
+                f"Budget '{budget['name']}' exceeded: "
+                f"${budget['spent']:.4f} spent of ${budget['limit']:.4f} "
+                f"{budget['period']} limit."
+            )
+            if budget["hard_kill"]:
+                logger.warning(f"Hard kill triggered. {msg}")
+                return JSONResponse(
+                    {
+                        "error": "budget_exceeded",
+                        "message": msg,
+                        "budget": budget,
+                    },
+                    status_code=429,
+                    headers={"Retry-After": "3600"},
+                )
+            else:
+                logger.warning(f"Soft budget alert. {msg}")
+    # ─────────────────────────────────────────────────────────────────────────
 
     # Extract request data
     body_bytes = await request.body()
