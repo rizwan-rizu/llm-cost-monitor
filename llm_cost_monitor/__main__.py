@@ -1,7 +1,6 @@
 """CLI entry point for LLM Cost Monitor."""
 
 import argparse
-import sys
 
 
 def main():
@@ -92,7 +91,7 @@ def main():
 
         models = get_cost_by_model(args.hours)
         if models:
-            print(f"\n  By Model:")
+            print("\n  By Model:")
             for m in models:
                 print(f"    {m['model']:40s} ${m['total_cost']:.4f}  ({m['requests']} reqs)")
 
@@ -100,8 +99,9 @@ def main():
         import csv
         import io
         import sys
-        from datetime import datetime, timezone
-        from .db import init_db, get_export_data, get_summary
+        from datetime import datetime, timezone  # noqa: I001
+
+        from .db import get_export_data, init_db
 
         init_db()
 
