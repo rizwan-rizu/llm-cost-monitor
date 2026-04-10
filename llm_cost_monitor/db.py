@@ -212,6 +212,56 @@ def get_cost_by_tag(hours: int = 24):
     return [dict(r) for r in rows]
 
 
+def get_export_data(
+    hours: int | None = 24,
+    since_ts: float | None = None,
+    until_ts: float | None = None,
+    model: str | None = None,
+    provider: str | None = None,
+    tag: str | None = None,
+) -> list[dict]:
+    """
+    Fetch requests for export with optional filters.
+
+    Priority: explicit since_ts/until_ts > hours > all data (hours=None).
+    """
+    conn = get_connection()
+
+    conditions = []
+    params = []
+
+    if since_ts is not None:
+        conditions.append("timestamp >= ?")
+        params.append(since_ts)
+    elif hours is not None:
+        conditions.append("timestamp >= ?")
+        params.append(time.time() - hours * 3600)
+
+    if until_ts is not None:
+        conditions.append("timestamp <= ?")
+        params.append(until_ts)
+
+    if model:
+        conditions.append("model = ?")
+        params.append(model)
+
+    if provider:
+        conditions.append("provider = ?")
+        params.append(provider)
+
+    if tag:
+        conditions.append("tag = ?")
+        params.append(tag)
+
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    rows = conn.execute(
+        f"SELECT * FROM requests {where} ORDER BY timestamp ASC",
+        params,
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
 def _budget_status(budget: sqlite3.Row, conn: sqlite3.Connection) -> dict:
     """Compute current spend against a budget row and return a status dict."""
     period_hours = {"hourly": 1, "daily": 24, "weekly": 168, "monthly": 720}
