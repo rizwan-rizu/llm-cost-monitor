@@ -4,3 +4,7 @@ line-length = 100
 [lint]
 select = ["E", "F", "W", "I"]
 ignore = ["E501"]  # line length handled by formatter
+
+[lint.per-file-ignores]
+# __main__.py uses lazy inline imports for CLI startup speed — skip import sorting
+"llm_cost_monitor/__main__.py" = ["I001"]

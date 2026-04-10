@@ -1,12 +1,10 @@
 """SQLite storage for request logs and cost tracking."""
 
-import sqlite3
 import json
 import os
+import sqlite3
 import time
-from datetime import datetime, timedelta
 from pathlib import Path
-
 
 DEFAULT_DB_PATH = os.path.expanduser("~/.llm-cost-monitor/costs.db")
 
@@ -80,7 +78,7 @@ def log_request(
     latency_ms: int = 0,
     status_code: int = 200,
     endpoint: str = "",
-    metadata: dict = None,
+    metadata: dict | None = None,
     tag: str = "",
 ):
     conn = get_connection()
