@@ -20,6 +20,16 @@ def main():
     summary_parser = subparsers.add_parser("summary", help="Show cost summary")
     summary_parser.add_argument("--hours", type=int, default=24, help="Hours to look back (default: 24)")
 
+    # Export command
+    export_parser = subparsers.add_parser("export", help="Export cost data to CSV or JSON")
+    export_parser.add_argument("--format", choices=["csv", "json"], default="csv", help="Output format (default: csv)")
+    export_parser.add_argument("--output", "-o", default=None, help="Output file path (default: stdout)")
+    export_parser.add_argument("--hours", type=int, default=24, help="Hours to look back (default: 24)")
+    export_parser.add_argument("--all", action="store_true", help="Export all data (ignores --hours)")
+    export_parser.add_argument("--model", default=None, help="Filter by model name")
+    export_parser.add_argument("--provider", default=None, help="Filter by provider")
+    export_parser.add_argument("--tag", default=None, help="Filter by tag")
+
     # Budget commands
     budget_parser = subparsers.add_parser("budget", help="Manage spending budgets")
     budget_sub = budget_parser.add_subparsers(dest="budget_command")
@@ -85,6 +95,71 @@ def main():
             print(f"\n  By Model:")
             for m in models:
                 print(f"    {m['model']:40s} ${m['total_cost']:.4f}  ({m['requests']} reqs)")
+
+    elif args.command == "export":
+        import csv
+        import io
+        import sys
+        from datetime import datetime, timezone
+        from .db import init_db, get_export_data, get_summary
+
+        init_db()
+
+        rows = get_export_data(
+            hours=None if args.all else args.hours,
+            model=args.model,
+            provider=args.provider,
+            tag=args.tag,
+        )
+
+        if args.format == "csv":
+            output = io.StringIO()
+            fieldnames = [
+                "timestamp", "model", "provider",
+                "input_tokens", "output_tokens", "total_tokens",
+                "input_cost", "output_cost", "total_cost",
+                "latency_ms", "status_code", "tag", "endpoint",
+            ]
+            writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
+            writer.writeheader()
+            for row in rows:
+                row["timestamp"] = datetime.fromtimestamp(
+                    row["timestamp"], tz=timezone.utc
+                ).strftime("%Y-%m-%dT%H:%M:%SZ")
+                writer.writerow(row)
+            content = output.getvalue()
+        else:
+            summary = {
+                "total_requests": len(rows),
+                "total_cost": round(sum(r["total_cost"] for r in rows), 6),
+                "total_input_tokens": sum(r["input_tokens"] for r in rows),
+                "total_output_tokens": sum(r["output_tokens"] for r in rows),
+            }
+            for row in rows:
+                row["timestamp"] = datetime.fromtimestamp(
+                    row["timestamp"], tz=timezone.utc
+                ).strftime("%Y-%m-%dT%H:%M:%SZ")
+            payload = {
+                "exported_at": datetime.now(timezone.utc).isoformat(),
+                "filters": {
+                    "hours": None if args.all else args.hours,
+                    "all": args.all,
+                    "model": args.model,
+                    "provider": args.provider,
+                    "tag": args.tag,
+                },
+                "summary": summary,
+                "requests": rows,
+            }
+            import json as _json
+            content = _json.dumps(payload, indent=2)
+
+        if args.output:
+            with open(args.output, "w") as f:
+                f.write(content)
+            print(f"Exported {len(rows)} record(s) to {args.output}")
+        else:
+            sys.stdout.write(content)
 
     elif args.command == "budget":
         from .db import init_db, set_budget, list_budgets, delete_budget

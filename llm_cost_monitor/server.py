@@ -5,21 +5,25 @@ A transparent proxy that sits between your app and any LLM API,
 tracking costs and serving a real-time dashboard.
 """
 
+import csv
+import io
 import time
 import json
 import os
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, Request, Response
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from .db import (
     init_db, log_request, get_summary, get_cost_by_model, get_cost_over_time,
     get_recent_requests, get_cost_by_provider, get_cost_by_tag,
     check_all_budgets, set_budget, delete_budget, list_budgets,
+    get_export_data,
 )
 from .pricing import calculate_cost
 from .providers import detect_provider
@@ -96,6 +100,94 @@ async def api_recent(limit: int = 50):
 @app.get("/api/by-tag")
 async def api_by_tag(hours: int = 24):
     return JSONResponse(get_cost_by_tag(hours))
+
+
+# ──────────────────────────────────────────────
+# Export endpoint
+# ──────────────────────────────────────────────
+
+@app.get("/api/export")
+async def api_export(
+    format: str = "json",
+    hours: int | None = 24,
+    all: bool = False,
+    model: str | None = None,
+    provider: str | None = None,
+    tag: str | None = None,
+):
+    """
+    Export cost data as CSV or JSON.
+
+    Query params:
+      format   — csv | json (default: json)
+      hours    — look-back window (default: 24); ignored when all=true
+      all      — export entire history (overrides hours)
+      model    — filter by model name
+      provider — filter by provider
+      tag      — filter by tag
+    """
+    rows = get_export_data(
+        hours=None if all else hours,
+        model=model,
+        provider=provider,
+        tag=tag,
+    )
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    if format.lower() == "csv":
+        output = io.StringIO()
+        fieldnames = [
+            "timestamp", "model", "provider",
+            "input_tokens", "output_tokens", "total_tokens",
+            "input_cost", "output_cost", "total_cost",
+            "latency_ms", "status_code", "tag", "endpoint",
+        ]
+        writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        for row in rows:
+            row["timestamp"] = datetime.fromtimestamp(
+                row["timestamp"], tz=timezone.utc
+            ).strftime("%Y-%m-%dT%H:%M:%SZ")
+            writer.writerow(row)
+
+        filename = f"llm-costs-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.csv"
+        return Response(
+            content=output.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    # JSON
+    summary = {
+        "total_requests": len(rows),
+        "total_cost": round(sum(r["total_cost"] for r in rows), 6),
+        "total_input_tokens": sum(r["input_tokens"] for r in rows),
+        "total_output_tokens": sum(r["output_tokens"] for r in rows),
+    }
+    for row in rows:
+        row["timestamp"] = datetime.fromtimestamp(
+            row["timestamp"], tz=timezone.utc
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    payload = {
+        "exported_at": now_iso,
+        "filters": {
+            "hours": None if all else hours,
+            "all": all,
+            "model": model,
+            "provider": provider,
+            "tag": tag,
+        },
+        "summary": summary,
+        "requests": rows,
+    }
+    filename = f"llm-costs-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.json"
+    return Response(
+        content=json.dumps(payload, indent=2),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ──────────────────────────────────────────────

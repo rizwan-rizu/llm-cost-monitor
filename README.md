@@ -181,6 +181,31 @@ When a hard kill budget is exceeded, callers receive a structured `429`:
 }
 ```
 
+### Export to CSV / JSON
+
+Export your cost data for spreadsheets, BI tools, or custom scripts.
+
+```bash
+# Export last 24h as CSV (default)
+llm-cost-monitor export --output costs.csv
+
+# Export as JSON
+llm-cost-monitor export --format json --output costs.json
+
+# Export all historical data
+llm-cost-monitor export --all --output full-history.csv
+
+# Filter by provider, model, or tag
+llm-cost-monitor export --provider openai --hours 168 --output openai-week.csv
+llm-cost-monitor export --model gpt-4o --tag agent-run --format json
+```
+
+The dashboard also has a one-click download:
+```
+GET http://localhost:8877/api/export?format=csv&hours=24
+GET http://localhost:8877/api/export?format=json&all=true&provider=anthropic
+```
+
 ### CLI Summary
 ```bash
 llm-cost-monitor summary --hours 24
@@ -249,7 +274,7 @@ If a model isn't in the pricing table, the request is still proxied and logged (
 
 - [x] Budget alerts and hard kill switches (abort request if budget exceeded)
 - [x] Streaming response support with token counting
-- [ ] Export to CSV/JSON
+- [x] Export to CSV/JSON
 - [ ] Prometheus metrics endpoint
 - [ ] Slack/Discord alerts when spend exceeds threshold
 - [ ] Team mode with per-user tracking
